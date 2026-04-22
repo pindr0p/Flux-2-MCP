@@ -23,6 +23,9 @@ const DIRECT_BFL_PREVIEW_MODEL_PATHS = new Set(["flux-2-pro"]);
 const EnvSchema = z.object({
   FLUX_SERVER_NAME: z.string().default("librechat-flux-mcp"),
   FLUX_SERVER_VERSION: z.string().default("0.1.0"),
+  FLUX_HTTP_HOST: z.string().default("127.0.0.1"),
+  FLUX_HTTP_PORT: z.coerce.number().int().positive().default(3000),
+  FLUX_HTTP_MCP_PATH: z.string().default("/mcp"),
   FLUX_PROVIDER_KIND: z.enum(["azure-bfl", "direct-bfl"]).optional(),
   FLUX_PROVIDER_BASE_URL: z.string().optional(),
   BFL_API_BASE_URL: z.string().optional(),
@@ -60,6 +63,11 @@ export interface FluxServerConfig {
   server: {
     name: string;
     version: string;
+  };
+  http: {
+    host: string;
+    port: number;
+    mcpPath: string;
   };
   provider: {
     kind: FluxProviderKind;
@@ -104,6 +112,11 @@ export function loadConfig(
     server: {
       name: parsed.FLUX_SERVER_NAME,
       version: parsed.FLUX_SERVER_VERSION
+    },
+    http: {
+      host: parsed.FLUX_HTTP_HOST,
+      port: parsed.FLUX_HTTP_PORT,
+      mcpPath: normalizeMcpPath(parsed.FLUX_HTTP_MCP_PATH)
     },
     provider: {
       kind: providerKind,
@@ -208,6 +221,11 @@ function normalizePathPrefix(value: string): string {
   }
 
   return value;
+}
+
+function normalizeMcpPath(value: string): string {
+  const normalized = normalizePathPrefix(value).replace(/\/+$/, "");
+  return normalized.length > 0 ? normalized : "/mcp";
 }
 
 function inferProviderKind(parsed: z.infer<typeof EnvSchema>): FluxProviderKind {

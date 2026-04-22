@@ -1,0 +1,32 @@
+mcpSettings:
+  allowedDomains:
+    - "localhost"
+    - "127.0.0.1"
+    - "host.docker.internal"
+
+mcpServers:
+  fluxHttpLocal:
+    type: streamable-http
+    url: http://localhost:3000/mcp
+    timeout: 300000
+    initTimeout: 30000
+    chatMenu: true
+    serverInstructions: |
+      Submit new text-only jobs with flux_submit_generate.
+      Submit reference-guided jobs with flux_submit_generate_with_references.
+      Submit single-image refinements with flux_submit_edit.
+      Submit multi-image refinements with flux_submit_edit_multi_reference.
+      Use flux_submit_variants to request 2-4 seeded alternatives for prompt-only or reference-guided workflows.
+      After any submit tool returns a job_id, poll with flux_get_job_status.
+      When the job is ready, call flux_get_job_result to render the image and capture the image_id for later reuse.
+
+  fluxHttpFromDocker:
+    type: streamable-http
+    url: http://host.docker.internal:3001/mcp
+    timeout: 300000
+    initTimeout: 30000
+    chatMenu: true
+    startup: false
+    serverInstructions: |
+      Use this configuration when LibreChat itself is running in Docker and the FLUX MCP container is published on the Docker host at port 3001.
+      Submit jobs with the same async flow as the local HTTP server: submit, then poll status, then fetch the result.
