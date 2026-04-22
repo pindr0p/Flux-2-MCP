@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { loadConfig } from "./config.js";
+import type { FluxJobNotificationPublisher } from "./monitor/jobMonitor.js";
 import { createFluxToolServices } from "./services.js";
 import { createConfiguredServer } from "./server.js";
 import { createLogger } from "./util/logging.js";
@@ -23,7 +24,9 @@ const sessions = new Map<string, HttpSession>();
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger();
-  const services = await createFluxToolServices(config, logger);
+  const services = await createFluxToolServices(config, logger, {
+    jobNotifications: createHttpJobNotificationPublisher(logger)
+  });
 
   const httpServer = createServer((req, res) => {
     void handleHttpRequest(req, res, { config, logger, services }).catch(
@@ -50,9 +53,10 @@ async function main(): Promise<void> {
     httpServer.close();
     await Promise.all(
       Array.from(sessions.entries()).map(([sessionId, session]) =>
-        closeSession(sessionId, session, logger)
+        closeSession(sessionId, session, logger, services.jobMonitor)
       )
     );
+    await services.jobMonitor.close();
     process.exit(signal === "SIGINT" ? 130 : 143);
   };
 
@@ -139,7 +143,12 @@ async function handleHttpRequest(
 
       const existingSession = sessions.get(currentSessionId);
       if (existingSession) {
-        void closeSession(currentSessionId, existingSession, logger);
+        void closeSession(
+          currentSessionId,
+          existingSession,
+          logger,
+          services.jobMonitor
+        );
       }
     };
 
@@ -192,7 +201,7 @@ async function handleHttpRequest(
       return;
     }
 
-    await closeSession(sessionId, session, logger);
+    await closeSession(sessionId, session, logger, services.jobMonitor);
     res.writeHead(204).end();
     return;
   }
@@ -203,12 +212,42 @@ async function handleHttpRequest(
 async function closeSession(
   sessionId: string,
   session: HttpSession,
-  logger: ReturnType<typeof createLogger>
+  logger: ReturnType<typeof createLogger>,
+  jobMonitor: Awaited<ReturnType<typeof createFluxToolServices>>["jobMonitor"]
 ): Promise<void> {
   sessions.delete(sessionId);
+  jobMonitor.dropSession(sessionId);
 
   await Promise.allSettled([session.transport.close(), session.server.close()]);
   logger.debug({ sessionId }, "Closed MCP HTTP session.");
+}
+
+function createHttpJobNotificationPublisher(
+  logger: ReturnType<typeof createLogger>
+): FluxJobNotificationPublisher {
+  return {
+    async publishJobUpdate({ job, sessionId }) {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        return;
+      }
+
+      const level = job.status === "failed" ? "error" : "info";
+      const data =
+        job.status === "ready"
+          ? `FLUX job ${job.jobId} completed with image_id=${job.resultImageId ?? "unknown"}.`
+          : `FLUX job ${job.jobId} failed${job.errorCode ? ` error_code=${job.errorCode}` : ""}${job.errorMessage ? ` message=${job.errorMessage}` : ""}.`;
+
+      try {
+        await session.server.sendLoggingMessage({ level, data });
+      } catch (error) {
+        logger.warn(
+          { error, jobId: job.jobId, sessionId },
+          "Failed to publish FLUX job notification."
+        );
+      }
+    }
+  };
 }
 
 function readSessionId(req: IncomingMessage): string | undefined {

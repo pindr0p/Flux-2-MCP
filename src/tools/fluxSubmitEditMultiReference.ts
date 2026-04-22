@@ -29,14 +29,15 @@ export function registerFluxSubmitEditMultiReferenceTool(
         })
       }
     },
-    async (args: SharedGenerationArgs & { image_ids: string[] }) => {
+    async (args: SharedGenerationArgs & { image_ids: string[] }, extra) => {
       try {
         const references = await resolveToolReferences(services, args.image_ids);
         const job = await submitToolJob({
           services,
           toolName: "flux_submit_edit_multi_reference",
           args,
-          references
+          references,
+          sessionId: extra.sessionId
         });
 
         return createTextResult(summarizeJob(job));

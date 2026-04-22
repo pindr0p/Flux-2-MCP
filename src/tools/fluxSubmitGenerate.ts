@@ -20,12 +20,13 @@ export function registerFluxSubmitGenerateTool(
       description: "Submit a text-only FLUX generation job and return its job handle.",
       inputSchema: generationArgumentShape
     },
-    async (args: SharedGenerationArgs) => {
+    async (args: SharedGenerationArgs, extra) => {
       try {
         const job = await submitToolJob({
           services,
           toolName: "flux_submit_generate",
-          args
+          args,
+          sessionId: extra.sessionId
         });
 
         return createTextResult(summarizeJob(job));

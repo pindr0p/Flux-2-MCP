@@ -85,7 +85,8 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 ## Notes
 
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
-- Streamable HTTP is now scaffolded for container deployment, but job completion is still client-polled until server-side background tracking is added.
+- Streamable HTTP now attaches background job tracking for submitted HTTP sessions and emits session-scoped completion messages when jobs reach a terminal state.
+- Polling with `flux_get_job_status` and `flux_get_job_result` remains the authoritative fallback for stdio clients, reconnects, and any client that does not surface streamed notifications well.
 - The v1 upstream path is BFL-compatible. It can target Azure's BFL-backed route or the direct BFL API without changing tool schemas.
 - Submit tools return job handles. Use `flux_get_job_status` and `flux_get_job_result` to complete the flow.
 - Stored images are addressed by `image_id` so later edits can reuse prior outputs.

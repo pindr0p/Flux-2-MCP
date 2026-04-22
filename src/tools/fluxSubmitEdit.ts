@@ -26,14 +26,15 @@ export function registerFluxSubmitEditTool(
         image_id: z.string().describe("Stored image ID to refine.")
       }
     },
-    async (args: SharedGenerationArgs & { image_id: string }) => {
+    async (args: SharedGenerationArgs & { image_id: string }, extra) => {
       try {
         const references = await resolveToolReferences(services, [args.image_id]);
         const job = await submitToolJob({
           services,
           toolName: "flux_submit_edit",
           args,
-          references
+          references,
+          sessionId: extra.sessionId
         });
 
         return createTextResult(summarizeJob(job));

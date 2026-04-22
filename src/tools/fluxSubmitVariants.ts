@@ -53,7 +53,7 @@ export function registerFluxSubmitVariantsTool(
         }).optional()
       }
     },
-    async (args: VariantArgs) => {
+    async (args: VariantArgs, extra) => {
       try {
         if (args.count > services.config.flux.variantsMaxCount) {
           throw new FluxMcpError(
@@ -75,7 +75,8 @@ export function registerFluxSubmitVariantsTool(
             references: resolvedReferences,
             requestExtras: {
               seed
-            }
+            },
+            sessionId: extra.sessionId
           });
 
           jobs.push({

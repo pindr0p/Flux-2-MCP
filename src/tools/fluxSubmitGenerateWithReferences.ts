@@ -30,7 +30,8 @@ export function registerFluxSubmitGenerateWithReferencesTool(
       }
     },
     async (
-      args: SharedGenerationArgs & { reference_image_ids: string[] }
+      args: SharedGenerationArgs & { reference_image_ids: string[] },
+      extra
     ) => {
       try {
         const references = await resolveToolReferences(
@@ -41,7 +42,8 @@ export function registerFluxSubmitGenerateWithReferencesTool(
           services,
           toolName: "flux_submit_generate_with_references",
           args,
-          references
+          references,
+          sessionId: extra.sessionId
         });
 
         return createTextResult(summarizeJob(job));

@@ -108,6 +108,7 @@ export async function submitToolJob(options: {
   args: SharedGenerationArgs;
   references?: ResolvedToolReferences;
   requestExtras?: Partial<ComposeRequest>;
+  sessionId?: string;
 }): Promise<FluxJobRecord> {
   const { args, requestExtras, services, toolName } = options;
   const references = options.references ?? {
@@ -117,7 +118,7 @@ export async function submitToolJob(options: {
 
   assertProviderConfigured(services.config);
 
-  return submitComposeJob({
+  const job = await submitComposeJob({
     services,
     toolName,
     request: buildComposeRequest(services.config.flux.defaultModel, args, {
@@ -127,6 +128,12 @@ export async function submitToolJob(options: {
     parentImageIds: references.parentImageIds,
     referenceImagesBase64: references.referenceImagesBase64
   });
+
+  services.jobMonitor.watch(job, {
+    sessionId: options.sessionId
+  });
+
+  return job;
 }
 
 export function createTextResult(text: string, isError = false) {
