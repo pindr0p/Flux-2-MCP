@@ -7,6 +7,7 @@ TypeScript MCP server for LibreChat that targets FLUX models through either Azur
 This repository now includes:
 
 - stdio MCP server scaffold
+- Streamable HTTP MCP entrypoint scaffold for containerized deployment
 - generic provider config with Azure and direct BFL env aliases
 - FLUX model profile layer
 - BFL-compatible submit, status refresh, and result fetch adapter for Azure BFL-backed and direct BFL routing
@@ -57,15 +58,34 @@ Provider notes:
 
 - `npm run build`
 - `npm run dev`
+- `npm run dev:http`
 - `npm run start`
+- `npm run start:http`
 - `npm run probe:generate -- "your prompt"`
 - `npm run probe:compose -- /path/to/reference-1.jpg [/path/to/reference-2.jpg]`
 
 The probe scripts now print provider kind, release channel, upstream request ID, and polling URL so Azure and direct BFL behavior can be compared side by side.
 
+## Container deployment
+
+- A starter `.env` file is now present at the repo root and is ignored by git.
+- Edit `.env` with your provider credentials before deploying.
+- Build and run with `docker compose up --build`.
+- Wait until `docker compose ps` reports the service as `healthy` before testing the MCP endpoint.
+- The HTTP MCP endpoint is exposed at `http://localhost:3001/mcp` by default.
+- Container health is exposed at `http://localhost:3001/healthz` by default.
+- The Compose service uses Docker's default `bridge` network mode instead of creating a project-specific Compose network.
+- Persistent image and metadata storage now uses a named Docker volume instead of a host bind mount, which avoids host permission issues during startup.
+
+## Examples
+
+- `examples/librechat.stdio.yaml` keeps the local child-process setup.
+- `examples/librechat.http.yaml` shows LibreChat `streamable-http` wiring for the containerized MCP server.
+
 ## Notes
 
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
+- Streamable HTTP is now scaffolded for container deployment, but job completion is still client-polled until server-side background tracking is added.
 - The v1 upstream path is BFL-compatible. It can target Azure's BFL-backed route or the direct BFL API without changing tool schemas.
 - Submit tools return job handles. Use `flux_get_job_status` and `flux_get_job_result` to complete the flow.
 - Stored images are addressed by `image_id` so later edits can reuse prior outputs.

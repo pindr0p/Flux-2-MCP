@@ -1,0 +1,266 @@
+#!/usr/bin/env node
+
+import { randomUUID } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import process from "node:process";
+
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+
+import { loadConfig } from "./config.js";
+import { createFluxToolServices } from "./services.js";
+import { createConfiguredServer } from "./server.js";
+import { createLogger } from "./util/logging.js";
+
+interface HttpSession {
+  server: Awaited<ReturnType<typeof createConfiguredServer>>;
+  transport: StreamableHTTPServerTransport;
+}
+
+const sessions = new Map<string, HttpSession>();
+
+async function main(): Promise<void> {
+  const config = loadConfig();
+  const logger = createLogger();
+  const services = await createFluxToolServices(config, logger);
+
+  const httpServer = createServer((req, res) => {
+    void handleHttpRequest(req, res, { config, logger, services }).catch(
+      (error) => {
+        logger.error({ error }, "Failed to handle MCP HTTP request.");
+        writeJsonRpcError(res, 500, -32603, "Internal server error");
+      }
+    );
+  });
+
+  httpServer.listen(config.http.port, config.http.host, () => {
+    logger.info(
+      {
+        host: config.http.host,
+        port: config.http.port,
+        path: config.http.mcpPath,
+        defaultModel: config.flux.defaultModel
+      },
+      "FLUX MCP server listening on Streamable HTTP."
+    );
+  });
+
+  const shutdown = async (signal: NodeJS.Signals) => {
+    httpServer.close();
+    await Promise.all(
+      Array.from(sessions.entries()).map(([sessionId, session]) =>
+        closeSession(sessionId, session, logger)
+      )
+    );
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+}
+
+async function handleHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: {
+    config: ReturnType<typeof loadConfig>;
+    logger: ReturnType<typeof createLogger>;
+    services: Awaited<ReturnType<typeof createFluxToolServices>>;
+  }
+): Promise<void> {
+  const { config, logger, services } = context;
+  const requestPath = new URL(req.url ?? "/", "http://localhost").pathname;
+
+  if (requestPath === "/healthz") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+
+  if (requestPath !== config.http.mcpPath) {
+    res.writeHead(404).end();
+    return;
+  }
+
+  if (req.method === "POST") {
+    const body = await readJsonBody(req);
+    const sessionId = readSessionId(req);
+
+    if (sessionId) {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        writeJsonRpcError(
+          res,
+          404,
+          -32000,
+          `Session ${sessionId} was not found.`
+        );
+        return;
+      }
+
+      await session.transport.handleRequest(req, res, body);
+      return;
+    }
+
+    if (!isInitializeRequest(body)) {
+      writeJsonRpcError(
+        res,
+        400,
+        -32000,
+        "Bad Request: No valid session ID provided."
+      );
+      return;
+    }
+
+    let initializedSession: HttpSession | undefined;
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (createdSessionId) => {
+        if (!initializedSession) {
+          return;
+        }
+
+        sessions.set(createdSessionId, initializedSession);
+      }
+    });
+    const server = createConfiguredServer(config, services);
+    initializedSession = { server, transport };
+
+    transport.onclose = () => {
+      const currentSessionId = transport.sessionId;
+      if (!currentSessionId) {
+        return;
+      }
+
+      const existingSession = sessions.get(currentSessionId);
+      if (existingSession) {
+        void closeSession(currentSessionId, existingSession, logger);
+      }
+    };
+
+    transport.onerror = (error) => {
+      logger.error({ error }, "Streamable HTTP transport error.");
+    };
+
+    await server.connect(transport);
+    await transport.handleRequest(req, res, body);
+    return;
+  }
+
+  if (req.method === "GET") {
+    const sessionId = readSessionId(req);
+    if (!sessionId) {
+      writeJsonRpcError(
+        res,
+        400,
+        -32000,
+        "Bad Request: Missing MCP session ID header."
+      );
+      return;
+    }
+
+    const session = sessions.get(sessionId);
+    if (!session) {
+      writeJsonRpcError(
+        res,
+        404,
+        -32000,
+        `Session ${sessionId} was not found.`
+      );
+      return;
+    }
+
+    await session.transport.handleRequest(req, res);
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    const sessionId = readSessionId(req);
+    if (!sessionId) {
+      res.writeHead(400).end();
+      return;
+    }
+
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.writeHead(404).end();
+      return;
+    }
+
+    await closeSession(sessionId, session, logger);
+    res.writeHead(204).end();
+    return;
+  }
+
+  res.writeHead(405, { Allow: "GET, POST, DELETE" }).end();
+}
+
+async function closeSession(
+  sessionId: string,
+  session: HttpSession,
+  logger: ReturnType<typeof createLogger>
+): Promise<void> {
+  sessions.delete(sessionId);
+
+  await Promise.allSettled([session.transport.close(), session.server.close()]);
+  logger.debug({ sessionId }, "Closed MCP HTTP session.");
+}
+
+function readSessionId(req: IncomingMessage): string | undefined {
+  const headerValue = req.headers["mcp-session-id"];
+
+  if (Array.isArray(headerValue)) {
+    return headerValue[0];
+  }
+
+  return headerValue;
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+  if (!rawBody) {
+    throw new Error("Expected a JSON request body.");
+  }
+
+  return JSON.parse(rawBody) as unknown;
+}
+
+function writeJsonRpcError(
+  res: ServerResponse,
+  statusCode: number,
+  code: number,
+  message: string
+): void {
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+
+  res.writeHead(statusCode, { "content-type": "application/json" });
+  res.end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code,
+        message
+      },
+      id: null
+    })
+  );
+}
+
+main().catch((error) => {
+  console.error("Fatal error starting FLUX MCP HTTP server:", error);
+  process.exit(1);
+});
