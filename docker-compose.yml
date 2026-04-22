@@ -5,7 +5,6 @@ services:
     image: librechat-flux-mcp:local
     restart: unless-stopped
     network_mode: bridge
-    user: "${FLUX_CONTAINER_UID:-0}:${FLUX_CONTAINER_GID:-0}"
     env_file:
       - .env
     ports:
