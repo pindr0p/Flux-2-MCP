@@ -3,11 +3,12 @@ FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.json ./
+
+RUN npm ci
+
 COPY src ./src
 COPY scripts ./scripts
 COPY tests ./tests
-
-RUN npm ci
 RUN npm run build
 RUN npm prune --omit=dev
 
