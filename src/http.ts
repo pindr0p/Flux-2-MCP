@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         host: config.http.host,
         port: config.http.port,
         path: config.http.mcpPath,
-        defaultModel: config.flux.defaultModel
+        model: config.flux.model
       },
       "FLUX MCP server listening on Streamable HTTP."
     );

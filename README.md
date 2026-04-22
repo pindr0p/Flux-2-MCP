@@ -8,7 +8,7 @@ This repository now includes:
 
 - stdio MCP server scaffold
 - Streamable HTTP MCP entrypoint scaffold for containerized deployment
-- generic provider config with Azure and direct BFL env aliases
+- canonical provider config for Azure and direct BFL routing
 - FLUX model profile layer
 - BFL-compatible submit, status refresh, and result fetch adapter for Azure BFL-backed and direct BFL routing
 - local metadata and image persistence
@@ -26,19 +26,20 @@ The initial tool surface currently includes:
 - `flux_get_job_status`
 - `flux_get_job_result`
 
-The exact submit-tool subset and accepted input fields are derived from `FLUX_DEFAULT_MODEL` at startup. Models that do not support references, edits, `aspect_ratio`, `guidance`, or `steps` will not expose those tool paths or input fields.
+The exact submit-tool subset and accepted input fields are derived from `MODEL` at startup. Models that do not support references, edits, `aspect_ratio`, `guidance`, or `steps` will not expose those tool paths or input fields.
 
 ## Environment
 
 Copy values from `.env.example` into your local environment or `.env` file.
 
-Generic provider variables are preferred:
+Core provider variables:
 
 - `FLUX_PROVIDER_KIND` (`azure-bfl` or `direct-bfl`)
-- `FLUX_PROVIDER_BASE_URL`
-- `FLUX_PROVIDER_AUTH_STRATEGY`
-- `FLUX_PROVIDER_API_KEY` or `FLUX_PROVIDER_BEARER_TOKEN`
-- `FLUX_PROVIDER_RELEASE_CHANNEL`
+- `BASE_URL`
+- `API_KEY`
+- `MODEL`
+- `FLUX_PROVIDER_API_VERSION` for Azure routing
+- `FLUX_PROVIDER_RELEASE_CHANNEL` for direct BFL preview routing
 
 Optional Streamable HTTP resumability variables:
 
@@ -53,23 +54,18 @@ Runtime concurrency variable:
 
 Model selection variable:
 
-- `FLUX_DEFAULT_MODEL` selects the active upstream model for the server. Model selection is env-driven rather than per request.
-
-Azure aliases are also supported:
-
-- `AZURE_ENDPOINT`
-- `AZURE_API_KEY`
-
-Direct BFL aliases are also supported:
-
-- `BFL_API_BASE_URL`
-- `BFL_API_KEY`
+- `MODEL` selects the active upstream model for the server. Model selection is env-driven rather than per request.
 
 Provider notes:
 
 - `azure-bfl` uses bearer authorization and submits to `/providers/blackforestlabs/v1/<model-path>?api-version=<version>`.
 - `direct-bfl` uses `x-key` authorization and submits to `/v1/<endpoint>`.
 - `direct-bfl` can select a pinned or preview endpoint with `FLUX_PROVIDER_RELEASE_CHANNEL=stable|preview`.
+
+Example setups:
+
+- Azure: `FLUX_PROVIDER_KIND=azure-bfl`, `BASE_URL=https://<resource>.api.cognitive.microsoft.com`, `API_KEY=<azure-key>`, `MODEL=FLUX.2-pro`
+- Direct BFL: `FLUX_PROVIDER_KIND=direct-bfl`, `BASE_URL=https://api.bfl.ai`, `API_KEY=<bfl-key>`, `MODEL=FLUX.2-pro`
 
 ## Scripts
 
@@ -103,7 +99,7 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 ## Notes
 
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
-- `flux_get_model_capabilities` reports the active model profile derived from `FLUX_DEFAULT_MODEL`.
+- `flux_get_model_capabilities` reports the active model profile derived from `MODEL`.
 - Streamable HTTP now attaches background job tracking for submitted HTTP sessions and emits session-scoped completion messages when jobs reach a terminal state.
 - When `FLUX_REDIS_URL` is configured and reachable, Streamable HTTP stores SSE events in Redis Streams and replays missed notifications after reconnects via `Last-Event-ID`.
 - Redis is optional. If `FLUX_REDIS_URL` is unset, the server still runs without resumable Streamable HTTP replay.

@@ -17,8 +17,14 @@ import { FluxMcpError } from "./util/errors.js";
 
 dotenv.config();
 
-const DEFAULT_DIRECT_BFL_BASE_URL = "https://api.bfl.ai";
+const AZURE_BFL_PATH_PREFIX = "/providers/blackforestlabs/v1";
 const DIRECT_BFL_PREVIEW_MODEL_PATHS = new Set(["flux-2-pro"]);
+
+const OptionalStringEnv = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value && value.length > 0 ? value : undefined));
 
 const EnvSchema = z.object({
   FLUX_SERVER_NAME: z.string().default("librechat-flux-mcp"),
@@ -57,28 +63,14 @@ const EnvSchema = z.object({
     .positive()
     .default(1000),
   FLUX_HTTP_EVENT_KEY_PREFIX: z.string().default("flux:mcp:sse"),
-  FLUX_PROVIDER_KIND: z.enum(["azure-bfl", "direct-bfl"]).optional(),
-  FLUX_PROVIDER_BASE_URL: z.string().optional(),
-  BFL_API_BASE_URL: z.string().optional(),
-  AZURE_ENDPOINT: z.string().optional(),
+  FLUX_PROVIDER_KIND: z.enum(["azure-bfl", "direct-bfl"]),
+  BASE_URL: z.string().trim().min(1),
+  API_KEY: z.string().trim().min(1),
+  MODEL: z.enum(FLUX_MODEL_IDS).default("FLUX.2-pro"),
   FLUX_PROVIDER_API_VERSION: z.string().default("preview"),
-  FLUX_PROVIDER_PATH_PREFIX: z
-    .string()
-    .default("/providers/blackforestlabs/v1"),
-  FLUX_PROVIDER_AUTH_STRATEGY: z
-    .enum(["authorization-bearer", "x-key"])
-    .optional(),
-  FLUX_PROVIDER_AUTH_MODE: z
-    .enum(["apiKey", "bearerToken"])
-    .optional(),
-  FLUX_PROVIDER_API_KEY: z.string().optional(),
-  BFL_API_KEY: z.string().optional(),
-  AZURE_API_KEY: z.string().optional(),
-  FLUX_PROVIDER_BEARER_TOKEN: z.string().optional(),
   FLUX_PROVIDER_RELEASE_CHANNEL: z
     .enum(["stable", "preview"])
     .default("stable"),
-  FLUX_DEFAULT_MODEL: z.enum(FLUX_MODEL_IDS).default("FLUX.2-pro"),
   FLUX_OUTPUT_DIR: z.string().default("./data/flux/images"),
   FLUX_METADATA_FILE: z.string().default("./data/flux/metadata.json"),
   FLUX_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(240000),
@@ -116,11 +108,10 @@ export interface FluxServerConfig {
     pathPrefix: string;
     authStrategy: FluxProviderAuthStrategy;
     apiKey?: string;
-    bearerToken?: string;
     releaseChannel: FluxReleaseChannel;
   };
   flux: {
-    defaultModel: FluxModelId;
+    model: FluxModelId;
     requestTimeoutMs: number;
     maxParallelRequests: number;
     variantsMaxCount: number;
@@ -145,17 +136,7 @@ export function loadConfig(
         keyPrefix: parsed.FLUX_HTTP_EVENT_KEY_PREFIX
       }
     : undefined;
-  const providerKind = inferProviderKind(parsed);
-  const providerBaseUrl =
-    parsed.FLUX_PROVIDER_BASE_URL ??
-    (providerKind === "azure-bfl"
-      ? parsed.AZURE_ENDPOINT
-      : parsed.BFL_API_BASE_URL ?? DEFAULT_DIRECT_BFL_BASE_URL);
-  const providerApiKey =
-    parsed.FLUX_PROVIDER_API_KEY ?? parsed.BFL_API_KEY ?? parsed.AZURE_API_KEY;
-  const authStrategy =
-    parsed.FLUX_PROVIDER_AUTH_STRATEGY ??
-    inferAuthStrategy(parsed.FLUX_PROVIDER_AUTH_MODE, providerKind);
+  const providerKind = parsed.FLUX_PROVIDER_KIND;
 
   return {
     server: {
@@ -172,16 +153,15 @@ export function loadConfig(
     },
     provider: {
       kind: providerKind,
-      baseUrl: providerBaseUrl,
+      baseUrl: parsed.BASE_URL,
       apiVersion: parsed.FLUX_PROVIDER_API_VERSION,
-      pathPrefix: normalizePathPrefix(parsed.FLUX_PROVIDER_PATH_PREFIX),
-      authStrategy,
-      apiKey: providerApiKey,
-      bearerToken: parsed.FLUX_PROVIDER_BEARER_TOKEN,
+      pathPrefix: resolveProviderPathPrefix(providerKind),
+      authStrategy: resolveProviderAuthStrategy(providerKind),
+      apiKey: parsed.API_KEY,
       releaseChannel: parsed.FLUX_PROVIDER_RELEASE_CHANNEL
     },
     flux: {
-      defaultModel: parsed.FLUX_DEFAULT_MODEL,
+      model: parsed.MODEL,
       requestTimeoutMs: parsed.FLUX_REQUEST_TIMEOUT_MS,
       maxParallelRequests: parsed.FLUX_MAX_PARALLEL_REQUESTS,
       variantsMaxCount: parsed.FLUX_VARIANTS_MAX_COUNT,
@@ -198,7 +178,7 @@ export function assertProviderConfigured(config: FluxServerConfig): void {
   if (!config.provider.baseUrl) {
     throw new FluxMcpError(
       "CONFIG_MISSING",
-      "FLUX provider base URL is not configured. Set FLUX_PROVIDER_BASE_URL or AZURE_ENDPOINT."
+      "FLUX provider base URL is not configured. Set BASE_URL."
     );
   }
 
@@ -240,7 +220,7 @@ export function resolveProviderHeaders(
     if (!config.provider.apiKey) {
       throw new FluxMcpError(
         "CONFIG_MISSING",
-        "FLUX_PROVIDER_API_KEY or BFL_API_KEY is required when using x-key authentication."
+        "FLUX provider API key is not configured. Set API_KEY."
       );
     }
 
@@ -249,16 +229,10 @@ export function resolveProviderHeaders(
     };
   }
 
-  if (config.provider.bearerToken) {
-    return {
-      Authorization: `Bearer ${config.provider.bearerToken}`
-    };
-  }
-
   if (!config.provider.apiKey) {
     throw new FluxMcpError(
       "CONFIG_MISSING",
-      "FLUX_PROVIDER_API_KEY, AZURE_API_KEY, or FLUX_PROVIDER_BEARER_TOKEN is required when using bearer authorization."
+      "FLUX provider API key is not configured. Set API_KEY."
     );
   }
 
@@ -280,34 +254,13 @@ function normalizeMcpPath(value: string): string {
   return normalized.length > 0 ? normalized : "/mcp";
 }
 
-function inferProviderKind(parsed: z.infer<typeof EnvSchema>): FluxProviderKind {
-  if (parsed.FLUX_PROVIDER_KIND) {
-    return parsed.FLUX_PROVIDER_KIND;
-  }
-
-  const explicitBaseUrl = parsed.FLUX_PROVIDER_BASE_URL ?? parsed.BFL_API_BASE_URL;
-  if (
-    parsed.BFL_API_KEY ||
-    explicitBaseUrl?.includes("api.bfl.ai")
-  ) {
-    return "direct-bfl";
-  }
-
-  return "azure-bfl";
+function resolveProviderPathPrefix(providerKind: FluxProviderKind): string {
+  return providerKind === "azure-bfl" ? AZURE_BFL_PATH_PREFIX : "/v1";
 }
 
-function inferAuthStrategy(
-  legacyAuthMode: z.infer<typeof EnvSchema>["FLUX_PROVIDER_AUTH_MODE"],
+function resolveProviderAuthStrategy(
   providerKind: FluxProviderKind
 ): FluxProviderAuthStrategy {
-  if (legacyAuthMode === "bearerToken") {
-    return "authorization-bearer";
-  }
-
-  if (legacyAuthMode === "apiKey") {
-    return providerKind === "direct-bfl" ? "x-key" : "authorization-bearer";
-  }
-
   return providerKind === "direct-bfl" ? "x-key" : "authorization-bearer";
 }
 

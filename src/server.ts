@@ -17,7 +17,7 @@ import { registerFluxSubmitVariantsTool } from "./tools/fluxSubmitVariants.js";
 import { createLogger, type FluxLogger } from "./util/logging.js";
 
 export function resolveRegisteredToolNames(config: FluxServerConfig): string[] {
-  const profile = getFluxModelProfile(config.flux.defaultModel);
+  const profile = getFluxModelProfile(config.flux.model);
   const toolNames = ["flux_get_model_capabilities"];
 
   if (profile.supportsTextOnlyGeneration) {

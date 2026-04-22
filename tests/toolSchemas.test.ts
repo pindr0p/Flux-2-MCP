@@ -10,18 +10,19 @@ import {
   createReferenceImageIdsSchema
 } from "../src/tools/shared.js";
 
-function createServices(defaultModel: string): FluxToolServices {
+function createServices(model: string): FluxToolServices {
   return {
     config: loadConfig({
-      AZURE_ENDPOINT: "https://example-resource.api.cognitive.microsoft.com",
-      AZURE_API_KEY: "azure-key",
-      FLUX_DEFAULT_MODEL: defaultModel
+      FLUX_PROVIDER_KIND: "azure-bfl",
+      BASE_URL: "https://example-resource.api.cognitive.microsoft.com",
+      API_KEY: "azure-key",
+      MODEL: model
     })
   } as FluxToolServices;
 }
 
 describe("submit tool schemas", () => {
-  it("derives multi-reference limits from the configured default model", () => {
+  it("derives multi-reference limits from the configured model", () => {
     const schema = createReferenceImageIdsSchema(createServices("FLUX.2-flex"), {
       min: 1,
       description: "Stored image IDs used as references."

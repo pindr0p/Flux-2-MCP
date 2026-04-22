@@ -26,7 +26,7 @@ export function registerFluxSubmitVariantsTool(
   server: McpServer,
   services: FluxToolServices
 ): void {
-  const profile = getFluxModelProfile(services.config.flux.defaultModel);
+  const profile = getFluxModelProfile(services.config.flux.model);
 
   server.registerTool(
     "flux_submit_variants",
@@ -117,7 +117,7 @@ async function resolveVariantReferences(
   services: FluxToolServices,
   args: VariantArgs
 ): Promise<ResolvedToolReferences> {
-  const profile = getFluxModelProfile(services.config.flux.defaultModel);
+  const profile = getFluxModelProfile(services.config.flux.model);
 
   if (args.image_id && args.image_ids?.length) {
     throw new FluxMcpError(

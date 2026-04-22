@@ -341,10 +341,11 @@ librechat-flux-mcp/
 
 ## Environment variables
 ```env
-AZURE_ENDPOINT=
-AZURE_API_KEY=
-FLUX_DEFAULT_MODEL=FLUX.2-pro
-FLUX_API_VERSION=preview
+FLUX_PROVIDER_KIND=azure-bfl
+BASE_URL=
+API_KEY=
+MODEL=FLUX.2-pro
+FLUX_PROVIDER_API_VERSION=preview
 FLUX_OUTPUT_DIR=./data/flux
 FLUX_METADATA_FILE=./data/flux/metadata.json
 FLUX_REQUEST_TIMEOUT_MS=240000
@@ -630,10 +631,11 @@ mcpServers:
       Use flux_edit_multi_reference when combining style or identity from multiple previous FLUX images.
       Reuse image_ids from previous tool outputs.
     env:
-      AZURE_ENDPOINT: "${AZURE_FLUX_BFL_ENDPOINT}"
-      AZURE_API_KEY: "${AZURE_FLUX_API_KEY}"
-      FLUX_DEFAULT_MODEL: "FLUX.2-pro"
-      FLUX_API_VERSION: "preview"
+      FLUX_PROVIDER_KIND: "azure-bfl"
+      BASE_URL: "${AZURE_FLUX_BFL_ENDPOINT}"
+      API_KEY: "${AZURE_FLUX_API_KEY}"
+      MODEL: "FLUX.2-pro"
+      FLUX_PROVIDER_API_VERSION: "preview"
       FLUX_OUTPUT_DIR: "/app/data/flux"
 ```
 

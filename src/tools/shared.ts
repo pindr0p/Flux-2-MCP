@@ -8,7 +8,7 @@ import type { FluxModelId } from "../profiles/fluxProfiles.js";
 import type { ComposeRequest, FluxJobRecord } from "../types.js";
 
 export function createGenerationArgumentShape(services: FluxToolServices) {
-  const profile = getDefaultModelProfile(services);
+  const profile = getConfiguredModelProfile(services);
 
   return {
     prompt: z.string().min(1).describe("Prompt used for generation or composition."),
@@ -90,7 +90,7 @@ export function createReferenceImageIdsSchema(
   return z
     .array(z.string())
     .min(options.min)
-    .max(getDefaultModelProfile(services).maxReferenceImages)
+    .max(getConfiguredModelProfile(services).maxReferenceImages)
     .describe(options.description);
 }
 
@@ -153,7 +153,7 @@ export async function submitToolJob(options: {
   const job = await submitComposeJob({
     services,
     toolName,
-    request: buildComposeRequest(services.config.flux.defaultModel, args, {
+    request: buildComposeRequest(services.config.flux.model, args, {
       referenceImageIds: references.referenceImageIds,
       ...requestExtras
     }),
@@ -207,6 +207,6 @@ export function summarizeJob(job: FluxJobRecord): string {
   return fields.join(" ");
 }
 
-function getDefaultModelProfile(services: FluxToolServices) {
-  return getFluxModelProfile(services.config.flux.defaultModel);
+function getConfiguredModelProfile(services: FluxToolServices) {
+  return getFluxModelProfile(services.config.flux.model);
 }

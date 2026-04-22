@@ -15,7 +15,7 @@ export function registerFluxGetModelCapabilitiesTool(
       inputSchema: {}
     },
     async () => {
-      const profile = getFluxModelProfile(services.config.flux.defaultModel);
+      const profile = getFluxModelProfile(services.config.flux.model);
       return {
         content: [
           {
@@ -23,7 +23,7 @@ export function registerFluxGetModelCapabilitiesTool(
             text: JSON.stringify(
               {
                 activeProvider: services.adapter.provider,
-                activeModel: services.config.flux.defaultModel,
+                activeModel: services.config.flux.model,
                 profile
               },
               null,

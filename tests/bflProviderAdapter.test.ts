@@ -25,8 +25,8 @@ describe("BflProviderAdapter", () => {
   it("enforces FLUX_MAX_PARALLEL_REQUESTS across upstream API calls", async () => {
     const config = loadConfig({
       FLUX_PROVIDER_KIND: "direct-bfl",
-      FLUX_PROVIDER_BASE_URL: "https://api.bfl.ai",
-      FLUX_PROVIDER_API_KEY: "direct-key",
+      BASE_URL: "https://api.bfl.ai",
+      API_KEY: "direct-key",
       FLUX_MAX_PARALLEL_REQUESTS: "1"
     });
     const adapter = new BflProviderAdapter(
@@ -86,8 +86,8 @@ describe("BflProviderAdapter", () => {
   it("retries a 429 response before succeeding", async () => {
     const config = loadConfig({
       FLUX_PROVIDER_KIND: "direct-bfl",
-      FLUX_PROVIDER_BASE_URL: "https://api.bfl.ai",
-      FLUX_PROVIDER_API_KEY: "direct-key"
+      BASE_URL: "https://api.bfl.ai",
+      API_KEY: "direct-key"
     });
     const adapter = new BflProviderAdapter(
       config,
@@ -142,8 +142,8 @@ describe("BflProviderAdapter", () => {
 
     const config = loadConfig({
       FLUX_PROVIDER_KIND: "direct-bfl",
-      FLUX_PROVIDER_BASE_URL: "https://api.bfl.ai",
-      FLUX_PROVIDER_API_KEY: "direct-key",
+      BASE_URL: "https://api.bfl.ai",
+      API_KEY: "direct-key",
       FLUX_REQUEST_TIMEOUT_MS: "25"
     });
     const adapter = new BflProviderAdapter(

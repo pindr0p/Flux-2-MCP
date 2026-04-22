@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   assertProviderConfigured(config);
   await imageStore.ensureOutputDir();
   process.stderr.write(
-    `Provider=${config.provider.kind} release_channel=${config.provider.releaseChannel} model=${config.flux.defaultModel}\n`
+    `Provider=${config.provider.kind} release_channel=${config.provider.releaseChannel} model=${config.flux.model}\n`
   );
 
   const referenceImagesBase64 = await Promise.all(
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
 
   const submitted = await adapter.submitCompose(
     {
-      model: config.flux.defaultModel,
+      model: config.flux.model,
       prompt: "Create a new composition that preserves the identity and style cues from the reference images.",
       outputFormat: "jpeg"
     },

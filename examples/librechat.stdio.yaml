@@ -17,10 +17,9 @@ mcpServers:
       When the job is ready, call flux_get_job_result to render the image and capture the image_id for later reuse.
     env:
       FLUX_PROVIDER_KIND: "azure-bfl"
-      FLUX_PROVIDER_BASE_URL: "${AZURE_FLUX_BFL_ENDPOINT}"
-      FLUX_PROVIDER_API_KEY: "${AZURE_FLUX_API_KEY}"
-      FLUX_DEFAULT_MODEL: "FLUX.2-pro"
-      FLUX_PROVIDER_AUTH_STRATEGY: "authorization-bearer"
+      BASE_URL: "${AZURE_FLUX_BFL_ENDPOINT}"
+      API_KEY: "${AZURE_FLUX_API_KEY}"
+      MODEL: "FLUX.2-pro"
       FLUX_PROVIDER_API_VERSION: "preview"
       FLUX_OUTPUT_DIR: "/app/data/flux/images"
       FLUX_METADATA_FILE: "/app/data/flux/metadata.json"
@@ -40,10 +39,9 @@ mcpServers:
       When the job is ready, call flux_get_job_result to render the image and capture the image_id for later reuse.
     env:
       FLUX_PROVIDER_KIND: "direct-bfl"
-      FLUX_PROVIDER_BASE_URL: "https://api.bfl.ai"
-      FLUX_PROVIDER_API_KEY: "${BFL_API_KEY}"
-      FLUX_PROVIDER_AUTH_STRATEGY: "x-key"
+      BASE_URL: "https://api.bfl.ai"
+      API_KEY: "${DIRECT_BFL_API_KEY}"
       FLUX_PROVIDER_RELEASE_CHANNEL: "preview"
-      FLUX_DEFAULT_MODEL: "FLUX.2-pro"
+      MODEL: "FLUX.2-pro"
       FLUX_OUTPUT_DIR: "/app/data/flux/images"
       FLUX_METADATA_FILE: "/app/data/flux/metadata.json"

@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   await built.server.connect(transport);
 
   built.logger.info(
-    { defaultModel: built.config.flux.defaultModel },
+    { model: built.config.flux.model },
     "FLUX MCP server listening on stdio."
   );
 }
