@@ -221,14 +221,63 @@ function readSessionId(req: IncomingMessage): string | undefined {
   return headerValue;
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+class JsonBodyReadError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly code: number
+  ) {
+    super(message);
+    this.name = "JsonBodyReadError";
+  }
+}
+
+function readContentLength(req: IncomingMessage): number | undefined {
+  const headerValue = req.headers["content-length"];
+  const rawValue = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+
+  if (rawValue === undefined) {
+    return undefined;
   }
 
-  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+  const contentLength = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    throw new JsonBodyReadError(
+      "Invalid Content-Length header.",
+      400,
+      -32600
+    );
+  }
+
+  return contentLength;
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const declaredContentLength = readContentLength(req);
+  if (
+    declaredContentLength !== undefined &&
+    declaredContentLength > MAX_JSON_BODY_BYTES
+  ) {
+    throw new JsonBodyReadError("Request body too large.", 413, -32600);
+  }
+
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+
+    if (totalBytes > MAX_JSON_BODY_BYTES) {
+      throw new JsonBodyReadError("Request body too large.", 413, -32600);
+    }
+
+    chunks.push(buffer);
+  }
+
+  const rawBody = Buffer.concat(chunks, totalBytes).toString("utf8").trim();
   if (!rawBody) {
     throw new Error("Expected a JSON request body.");
   }
