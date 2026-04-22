@@ -21,6 +21,7 @@ The initial tool surface currently includes:
 - `flux_submit_generate_with_references`
 - `flux_submit_edit`
 - `flux_submit_edit_multi_reference`
+- `flux_submit_variants`
 - `flux_get_job_status`
 - `flux_get_job_result`
 

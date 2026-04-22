@@ -1,0 +1,49 @@
+mcpServers:
+  fluxAzure:
+    type: stdio
+    command: node
+    args:
+      - /absolute/path/to/flux-librechat-mcp/dist/src/stdio.js
+    timeout: 300000
+    initTimeout: 30000
+    chatMenu: true
+    serverInstructions: |
+      Submit new text-only jobs with flux_submit_generate.
+      Submit reference-guided jobs with flux_submit_generate_with_references.
+      Submit single-image refinements with flux_submit_edit.
+      Submit multi-image refinements with flux_submit_edit_multi_reference.
+      Use flux_submit_variants to request 2-4 seeded alternatives for prompt-only or reference-guided workflows.
+      After any submit tool returns a job_id, poll with flux_get_job_status.
+      When the job is ready, call flux_get_job_result to render the image and capture the image_id for later reuse.
+    env:
+      FLUX_PROVIDER_KIND: "azure-bfl"
+      FLUX_PROVIDER_BASE_URL: "${AZURE_FLUX_BFL_ENDPOINT}"
+      FLUX_PROVIDER_API_KEY: "${AZURE_FLUX_API_KEY}"
+      FLUX_DEFAULT_MODEL: "FLUX.2-pro"
+      FLUX_PROVIDER_AUTH_STRATEGY: "authorization-bearer"
+      FLUX_PROVIDER_API_VERSION: "preview"
+      FLUX_OUTPUT_DIR: "/app/data/flux/images"
+      FLUX_METADATA_FILE: "/app/data/flux/metadata.json"
+
+  fluxDirectBfl:
+    type: stdio
+    command: node
+    args:
+      - /absolute/path/to/flux-librechat-mcp/dist/src/stdio.js
+    timeout: 300000
+    initTimeout: 30000
+    chatMenu: true
+    serverInstructions: |
+      Submit jobs the same way as the Azure-backed server.
+      This server targets the direct Black Forest Labs API using x-key authentication.
+      After any submit tool returns a job_id, poll with flux_get_job_status.
+      When the job is ready, call flux_get_job_result to render the image and capture the image_id for later reuse.
+    env:
+      FLUX_PROVIDER_KIND: "direct-bfl"
+      FLUX_PROVIDER_BASE_URL: "https://api.bfl.ai"
+      FLUX_PROVIDER_API_KEY: "${BFL_API_KEY}"
+      FLUX_PROVIDER_AUTH_STRATEGY: "x-key"
+      FLUX_PROVIDER_RELEASE_CHANNEL: "preview"
+      FLUX_DEFAULT_MODEL: "FLUX.2-pro"
+      FLUX_OUTPUT_DIR: "/app/data/flux/images"
+      FLUX_METADATA_FILE: "/app/data/flux/metadata.json"
