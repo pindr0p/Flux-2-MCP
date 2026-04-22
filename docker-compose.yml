@@ -5,23 +5,42 @@ services:
     image: librechat-flux-mcp:local
     restart: unless-stopped
     network_mode: bridge
-    env_file:
-      - .env
     ports:
-      - "${FLUX_HTTP_PUBLISHED_PORT:-3001}:3000"
+      - "${FLUX_HTTP_PUBLISHED_PORT:-3001}:${FLUX_HTTP_PORT:-3000}"
     environment:
-      FLUX_HTTP_HOST: "0.0.0.0"
-      FLUX_HTTP_PORT: "3000"
-      FLUX_HTTP_MCP_PATH: "/mcp"
-      FLUX_OUTPUT_DIR: "/app/data/flux/images"
-      FLUX_METADATA_FILE: "/app/data/flux/metadata.json"
+      FLUX_SERVER_NAME: "${FLUX_SERVER_NAME:-librechat-flux-mcp}"
+      FLUX_SERVER_VERSION: "${FLUX_SERVER_VERSION:-0.1.0}"
+      FLUX_HTTP_HOST: "${FLUX_HTTP_HOST:-0.0.0.0}"
+      FLUX_HTTP_PORT: "${FLUX_HTTP_PORT:-3000}"
+      FLUX_HTTP_MCP_PATH: "${FLUX_HTTP_MCP_PATH:-/mcp}"
+      FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS: "${FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS:-900000}"
+      FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS: "${FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS:-60000}"
+      FLUX_PROVIDER_KIND: "${FLUX_PROVIDER_KIND:-direct-bfl}"
+      BASE_URL: "${BASE_URL:-https://api.bfl.ai}"
+      API_KEY: "${API_KEY:-}"
+      MODEL: "${MODEL:-FLUX.2-pro}"
+      FLUX_PROVIDER_API_VERSION: "${FLUX_PROVIDER_API_VERSION:-preview}"
+      FLUX_PROVIDER_RELEASE_CHANNEL: "${FLUX_PROVIDER_RELEASE_CHANNEL:-stable}"
+      FLUX_REDIS_URL: "${FLUX_REDIS_URL:-}"
+      FLUX_HTTP_SSE_RETRY_INTERVAL_MS: "${FLUX_HTTP_SSE_RETRY_INTERVAL_MS:-1000}"
+      FLUX_HTTP_EVENT_TTL_SECONDS: "${FLUX_HTTP_EVENT_TTL_SECONDS:-3600}"
+      FLUX_HTTP_EVENT_MAX_STREAM_LENGTH: "${FLUX_HTTP_EVENT_MAX_STREAM_LENGTH:-1000}"
+      FLUX_HTTP_EVENT_KEY_PREFIX: "${FLUX_HTTP_EVENT_KEY_PREFIX:-flux:mcp:sse}"
+      FLUX_CONTAINER_STORAGE_ROOT: "${FLUX_CONTAINER_STORAGE_ROOT:-/app/data/flux}"
+      FLUX_OUTPUT_DIR: "${FLUX_OUTPUT_DIR:-}"
+      FLUX_METADATA_FILE: "${FLUX_METADATA_FILE:-}"
+      FLUX_REQUEST_TIMEOUT_MS: "${FLUX_REQUEST_TIMEOUT_MS:-240000}"
+      FLUX_MAX_PARALLEL_REQUESTS: "${FLUX_MAX_PARALLEL_REQUESTS:-2}"
+      FLUX_VARIANTS_MAX_COUNT: "${FLUX_VARIANTS_MAX_COUNT:-4}"
+      FLUX_ENABLE_IMAGE_IMPORT: "${FLUX_ENABLE_IMAGE_IMPORT:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
-      - flux_mcp_data:/app/data/flux
+      - flux_mcp_data:${FLUX_CONTAINER_STORAGE_ROOT:-/app/data/flux}
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          node -e "fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+          node -e "const port = process.env.FLUX_HTTP_PORT ?? '3000'; fetch('http://127.0.0.1:' + port + '/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3

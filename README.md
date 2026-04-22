@@ -84,6 +84,8 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 - Create `.env` at the repo root from `.env.example`; `.env` is ignored by git.
 - Edit `.env` with your provider credentials before deploying.
 - Set `FLUX_REDIS_URL` only if you want resumable Streamable HTTP replay through an existing Redis instance.
+- `FLUX_CONTAINER_STORAGE_ROOT` controls where the named Docker volume is mounted inside the container.
+- If `FLUX_OUTPUT_DIR` and `FLUX_METADATA_FILE` are unset, the container defaults them to `${FLUX_CONTAINER_STORAGE_ROOT}/images` and `${FLUX_CONTAINER_STORAGE_ROOT}/metadata.json`.
 - Build and run with `docker compose up --build`.
 - Wait until `docker compose ps` reports the service as `healthy` before testing the MCP endpoint.
 - The HTTP MCP endpoint is exposed at `http://localhost:3001/mcp` by default.
