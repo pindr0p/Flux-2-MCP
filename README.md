@@ -68,7 +68,7 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 
 ## Container deployment
 
-- A starter `.env` file is now present at the repo root and is ignored by git.
+- Copy `.env.example` to `.env` at the repo root; `.env` is ignored by git.
 - Edit `.env` with your provider credentials before deploying.
 - Build and run with `docker compose up --build`.
 - Wait until `docker compose ps` reports the service as `healthy` before testing the MCP endpoint.
