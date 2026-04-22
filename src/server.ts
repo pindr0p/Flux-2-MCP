@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { loadConfig, type FluxServerConfig } from "./config.js";
+import { getFluxModelProfile } from "./profiles/fluxProfiles.js";
 import {
   createFluxToolServices,
   type FluxToolServices
@@ -15,10 +16,43 @@ import { registerFluxSubmitGenerateWithReferencesTool } from "./tools/fluxSubmit
 import { registerFluxSubmitVariantsTool } from "./tools/fluxSubmitVariants.js";
 import { createLogger, type FluxLogger } from "./util/logging.js";
 
+export function resolveRegisteredToolNames(config: FluxServerConfig): string[] {
+  const profile = getFluxModelProfile(config.flux.defaultModel);
+  const toolNames = ["flux_get_model_capabilities"];
+
+  if (profile.supportsTextOnlyGeneration) {
+    toolNames.push("flux_submit_generate");
+  }
+
+  if (
+    profile.supportsReferenceGuidedComposition &&
+    profile.maxReferenceImages >= 1
+  ) {
+    toolNames.push("flux_submit_generate_with_references");
+  }
+
+  if (profile.supportsSingleReferenceEdit && profile.maxReferenceImages >= 1) {
+    toolNames.push("flux_submit_edit");
+  }
+
+  if (profile.supportsMultiReferenceEdit && profile.maxReferenceImages >= 2) {
+    toolNames.push("flux_submit_edit_multi_reference");
+  }
+
+  toolNames.push(
+    "flux_submit_variants",
+    "flux_get_job_status",
+    "flux_get_job_result"
+  );
+
+  return toolNames;
+}
+
 export function createConfiguredServer(
   config: FluxServerConfig,
   services: FluxToolServices
 ) {
+  const registeredToolNames = new Set(resolveRegisteredToolNames(config));
   const server = new McpServer(
     {
       name: config.server.name,
@@ -32,10 +66,22 @@ export function createConfiguredServer(
   );
 
   registerFluxGetModelCapabilitiesTool(server, services);
-  registerFluxSubmitGenerateTool(server, services);
-  registerFluxSubmitGenerateWithReferencesTool(server, services);
-  registerFluxSubmitEditTool(server, services);
-  registerFluxSubmitEditMultiReferenceTool(server, services);
+  if (registeredToolNames.has("flux_submit_generate")) {
+    registerFluxSubmitGenerateTool(server, services);
+  }
+
+  if (registeredToolNames.has("flux_submit_generate_with_references")) {
+    registerFluxSubmitGenerateWithReferencesTool(server, services);
+  }
+
+  if (registeredToolNames.has("flux_submit_edit")) {
+    registerFluxSubmitEditTool(server, services);
+  }
+
+  if (registeredToolNames.has("flux_submit_edit_multi_reference")) {
+    registerFluxSubmitEditMultiReferenceTool(server, services);
+  }
+
   registerFluxSubmitVariantsTool(server, services);
   registerFluxGetJobStatusTool(server, services);
   registerFluxGetJobResultTool(server, services);

@@ -4,7 +4,7 @@ import { toToolErrorResult } from "../util/errors.js";
 import {
   createReferenceImageIdsSchema,
   createTextResult,
-  generationArgumentShape,
+  createGenerationArgumentShape,
   resolveToolReferences,
   summarizeJob,
   submitToolJob,
@@ -22,7 +22,7 @@ export function registerFluxSubmitGenerateWithReferencesTool(
       description:
         "Submit a FLUX generation job guided by one or more stored reference images.",
       inputSchema: {
-        ...generationArgumentShape,
+        ...createGenerationArgumentShape(services),
         reference_image_ids: createReferenceImageIdsSchema(services, {
           min: 1,
           description: "Stored image IDs used as references."

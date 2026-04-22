@@ -16,6 +16,9 @@ import { FluxMcpError } from "../util/errors.js";
 import type { FluxLogger } from "../util/logging.js";
 import { ConcurrencyLimiter } from "../util/concurrencyLimiter.js";
 
+const DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS = 5;
+const MAX_RATE_LIMIT_RETRIES = 3;
+
 export class BflProviderAdapter implements FluxProviderAdapter {
   readonly provider;
   private readonly requestLimiter: ConcurrencyLimiter;
@@ -142,24 +145,45 @@ export class BflProviderAdapter implements FluxProviderAdapter {
       );
     }
 
-    const response = await fetch(readyResult.imageUrl);
-    if (!response.ok) {
-      throw new FluxMcpError(
-        "UPSTREAM_BAD_RESPONSE",
-        `Failed to download generated image. HTTP ${response.status}.`
-      );
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(
+      () => controller.abort(),
+      this.config.flux.requestTimeoutMs
+    );
+
+    try {
+      const response = await fetch(readyResult.imageUrl, {
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        throw new FluxMcpError(
+          "UPSTREAM_BAD_RESPONSE",
+          `Failed to download generated image. HTTP ${response.status}.`
+        );
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const mimeType =
+        response.headers.get("content-type")?.split(";")[0] ??
+        readyResult.mimeType ??
+        "image/jpeg";
+
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        mimeType
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new FluxMcpError(
+          "UPSTREAM_TIMEOUT",
+          `Generated image download timed out after ${this.config.flux.requestTimeoutMs}ms.`
+        );
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutHandle);
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const mimeType =
-      response.headers.get("content-type")?.split(";")[0] ??
-      readyResult.mimeType ??
-      "image/jpeg";
-
-    return {
-      buffer: Buffer.from(arrayBuffer),
-      mimeType
-    };
   }
 
   private async fetchJson(
@@ -167,58 +191,81 @@ export class BflProviderAdapter implements FluxProviderAdapter {
     init: RequestInit
   ): Promise<{ status: number; body: unknown }> {
     return this.requestLimiter.run(async () => {
-      const controller = new AbortController();
-      const timeoutHandle = setTimeout(
-        () => controller.abort(),
-        this.config.flux.requestTimeoutMs
-      );
-
-      try {
-        this.logger.debug(
-          {
-            method: init.method,
-            provider: this.provider.kind,
-            url,
-            maxParallelRequests: this.config.flux.maxParallelRequests
-          },
-          "Submitting upstream request."
+      for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(
+          () => controller.abort(),
+          this.config.flux.requestTimeoutMs
         );
 
-        const response = await fetch(url, {
-          ...init,
-          signal: controller.signal
-        });
-        const text = await response.text();
-        const body = parseMaybeJson(text);
+        try {
+          this.logger.debug(
+            {
+              attempt: attempt + 1,
+              method: init.method,
+              provider: this.provider.kind,
+              url,
+              maxParallelRequests: this.config.flux.maxParallelRequests
+            },
+            "Submitting upstream request."
+          );
 
-        if (!response.ok) {
-          const code =
-            response.status === 429
-              ? "UPSTREAM_RATE_LIMITED"
-              : "UPSTREAM_BAD_RESPONSE";
-          throw new FluxMcpError(
-            code,
-            `Upstream request failed with HTTP ${response.status}.`,
+          const response = await fetch(url, {
+            ...init,
+            signal: controller.signal
+          });
+          const text = await response.text();
+          const body = parseMaybeJson(text);
+
+          if (!response.ok) {
+            if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+              const retryDelayMs = resolveRateLimitDelayMs(response, body, attempt);
+              this.logger.warn(
+                {
+                  attempt: attempt + 1,
+                  retryDelayMs,
+                  status: response.status,
+                  url
+                },
+                "Rate limited by upstream provider. Retrying request."
+              );
+              await delay(retryDelayMs);
+              continue;
+            }
+
+            const code =
+              response.status === 429
+                ? "UPSTREAM_RATE_LIMITED"
+                : "UPSTREAM_BAD_RESPONSE";
+            throw new FluxMcpError(
+              code,
+              `Upstream request failed with HTTP ${response.status}.`,
+              body
+            );
+          }
+
+          return {
+            status: response.status,
             body
-          );
-        }
+          };
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new FluxMcpError(
+              "UPSTREAM_TIMEOUT",
+              `Upstream request timed out after ${this.config.flux.requestTimeoutMs}ms.`
+            );
+          }
 
-        return {
-          status: response.status,
-          body
-        };
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          throw new FluxMcpError(
-            "UPSTREAM_TIMEOUT",
-            `Upstream request timed out after ${this.config.flux.requestTimeoutMs}ms.`
-          );
+          throw error;
+        } finally {
+          clearTimeout(timeoutHandle);
         }
-
-        throw error;
-      } finally {
-        clearTimeout(timeoutHandle);
       }
+
+      throw new FluxMcpError(
+        "UPSTREAM_RATE_LIMITED",
+        "Upstream request exceeded the allowed rate-limit retry attempts."
+      );
     });
   }
 
@@ -277,4 +324,30 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function resolveRateLimitDelayMs(
+  response: Response,
+  body: unknown,
+  attempt: number
+): number {
+  const headerRetryAfter = Number(response.headers.get("retry-after"));
+  const nestedError = isObject(body) && isObject(body.error) ? body.error : undefined;
+  const bodyRetryAfter =
+    numberOrUndefined(isObject(body) ? body.retry_after : undefined) ??
+    numberOrUndefined(nestedError?.retry_after);
+  const retryAfterSeconds =
+    (Number.isFinite(headerRetryAfter) ? headerRetryAfter : undefined) ??
+    bodyRetryAfter ??
+    DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS;
+
+  return Math.max(retryAfterSeconds, 0) * 1000 * 2 ** attempt;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

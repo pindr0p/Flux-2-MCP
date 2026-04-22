@@ -3,7 +3,7 @@ import type { FluxToolServices } from "../services.js";
 import { toToolErrorResult } from "../util/errors.js";
 import {
   createTextResult,
-  generationArgumentShape,
+  createGenerationArgumentShape,
   summarizeJob,
   submitToolJob,
   type SharedGenerationArgs
@@ -18,7 +18,7 @@ export function registerFluxSubmitGenerateTool(
     {
       title: "Submit FLUX Generation",
       description: "Submit a text-only FLUX generation job and return its job handle.",
-      inputSchema: generationArgumentShape
+      inputSchema: createGenerationArgumentShape(services)
     },
     async (args: SharedGenerationArgs, extra) => {
       try {

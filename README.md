@@ -26,6 +26,8 @@ The initial tool surface currently includes:
 - `flux_get_job_status`
 - `flux_get_job_result`
 
+The exact submit-tool subset and accepted input fields are derived from `FLUX_DEFAULT_MODEL` at startup. Models that do not support references, edits, `aspect_ratio`, `guidance`, or `steps` will not expose those tool paths or input fields.
+
 ## Environment
 
 Copy values from `.env.example` into your local environment or `.env` file.
@@ -48,6 +50,10 @@ Optional Streamable HTTP resumability variables:
 Runtime concurrency variable:
 
 - `FLUX_MAX_PARALLEL_REQUESTS` now caps concurrent upstream provider API requests across submit and polling flows.
+
+Model selection variable:
+
+- `FLUX_DEFAULT_MODEL` selects the active upstream model for the server. Model selection is env-driven rather than per request.
 
 Azure aliases are also supported:
 
@@ -97,8 +103,10 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 ## Notes
 
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
+- `flux_get_model_capabilities` reports the active model profile derived from `FLUX_DEFAULT_MODEL`.
 - Streamable HTTP now attaches background job tracking for submitted HTTP sessions and emits session-scoped completion messages when jobs reach a terminal state.
 - When `FLUX_REDIS_URL` is configured and reachable, Streamable HTTP stores SSE events in Redis Streams and replays missed notifications after reconnects via `Last-Event-ID`.
+- Redis is optional. If `FLUX_REDIS_URL` is unset, the server still runs without resumable Streamable HTTP replay.
 - Idle Streamable HTTP sessions are swept and closed after `FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS` without activity.
 - Polling with `flux_get_job_status` and `flux_get_job_result` remains the authoritative fallback for stdio clients, reconnects, and any client that does not surface streamed notifications well.
 - The v1 upstream path is BFL-compatible. It can target Azure's BFL-backed route or the direct BFL API without changing tool schemas.

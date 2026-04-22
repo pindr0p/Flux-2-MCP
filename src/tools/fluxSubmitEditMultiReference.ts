@@ -4,7 +4,7 @@ import { toToolErrorResult } from "../util/errors.js";
 import {
   createReferenceImageIdsSchema,
   createTextResult,
-  generationArgumentShape,
+  createGenerationArgumentShape,
   resolveToolReferences,
   summarizeJob,
   submitToolJob,
@@ -22,7 +22,7 @@ export function registerFluxSubmitEditMultiReferenceTool(
       description:
         "Submit a FLUX refinement job that composes from multiple stored image IDs.",
       inputSchema: {
-        ...generationArgumentShape,
+        ...createGenerationArgumentShape(services),
         image_ids: createReferenceImageIdsSchema(services, {
           min: 2,
           description: "Two or more stored image IDs used as references."

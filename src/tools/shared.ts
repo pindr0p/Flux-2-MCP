@@ -7,28 +7,60 @@ import type { FluxToolServices } from "../services.js";
 import type { FluxModelId } from "../profiles/fluxProfiles.js";
 import type { ComposeRequest, FluxJobRecord } from "../types.js";
 
-export const generationArgumentShape = {
-  prompt: z.string().min(1).describe("Prompt used for generation or composition."),
-  aspect_ratio: z
-    .string()
-    .optional()
-    .describe("Optional aspect ratio such as 1:1, 16:9, or 4:5."),
-  width: z.number().int().min(64).optional().describe("Optional output width."),
-  height: z.number().int().min(64).optional().describe("Optional output height."),
-  output_format: z
-    .enum(["png", "jpeg"])
-    .optional()
-    .describe("Output image format."),
-  guidance: z.number().optional().describe("Optional FLUX guidance value."),
-  steps: z.number().int().positive().optional().describe("Optional inference step count."),
-  seed: z.number().int().optional().describe("Optional seed for reproducibility."),
-  safety_tolerance: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("Optional moderation tolerance level.")
-};
+export function createGenerationArgumentShape(services: FluxToolServices) {
+  const profile = getDefaultModelProfile(services);
+
+  return {
+    prompt: z.string().min(1).describe("Prompt used for generation or composition."),
+    ...(profile.supportsAspectRatio
+      ? {
+          aspect_ratio: z
+            .string()
+            .optional()
+            .describe("Optional aspect ratio such as 1:1, 16:9, or 4:5.")
+        }
+      : {}),
+    ...(profile.supportsWidthHeight
+      ? {
+          width: z.number().int().min(64).optional().describe("Optional output width."),
+          height: z.number().int().min(64).optional().describe("Optional output height.")
+        }
+      : {}),
+    output_format: z
+      .enum(["png", "jpeg"])
+      .optional()
+      .describe("Output image format."),
+    ...(profile.supportsGuidance
+      ? {
+          guidance: z
+            .number()
+            .min(profile.guidanceRange?.min ?? Number.NEGATIVE_INFINITY)
+            .max(profile.guidanceRange?.max ?? Number.POSITIVE_INFINITY)
+            .optional()
+            .describe("Optional FLUX guidance value.")
+        }
+      : {}),
+    ...(profile.supportsSteps
+      ? {
+          steps: z
+            .number()
+            .int()
+            .min(profile.stepsRange?.min ?? 1)
+            .max(profile.stepsRange?.max ?? Number.MAX_SAFE_INTEGER)
+            .optional()
+            .describe("Optional inference step count.")
+        }
+      : {}),
+    seed: z.number().int().optional().describe("Optional seed for reproducibility."),
+    safety_tolerance: z
+      .number()
+      .int()
+      .min(0)
+      .max(5)
+      .optional()
+      .describe("Optional moderation tolerance level.")
+  };
+}
 
 export interface SharedGenerationArgs {
   prompt: string;

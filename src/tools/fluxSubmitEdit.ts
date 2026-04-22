@@ -5,7 +5,7 @@ import type { FluxToolServices } from "../services.js";
 import { toToolErrorResult } from "../util/errors.js";
 import {
   createTextResult,
-  generationArgumentShape,
+  createGenerationArgumentShape,
   resolveToolReferences,
   summarizeJob,
   submitToolJob,
@@ -22,7 +22,7 @@ export function registerFluxSubmitEditTool(
       title: "Submit FLUX Edit",
       description: "Submit a single-image FLUX refinement job using a stored image_id.",
       inputSchema: {
-        ...generationArgumentShape,
+        ...createGenerationArgumentShape(services),
         image_id: z.string().describe("Stored image ID to refine.")
       }
     },

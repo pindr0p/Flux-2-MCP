@@ -19,6 +19,14 @@ export interface FluxModelProfile {
   supportsMultiReferenceEdit: boolean;
   supportsGuidance: boolean;
   supportsSteps: boolean;
+  guidanceRange?: {
+    min: number;
+    max: number;
+  };
+  stepsRange?: {
+    min: number;
+    max: number;
+  };
   supportsAspectRatio: boolean;
   supportsWidthHeight: boolean;
   maxOutputMegapixels: number;
@@ -35,8 +43,8 @@ const FLUX_MODEL_PROFILES: Record<FluxModelId, FluxModelProfile> = {
     supportsReferenceGuidedComposition: true,
     supportsSingleReferenceEdit: true,
     supportsMultiReferenceEdit: true,
-    supportsGuidance: true,
-    supportsSteps: true,
+    supportsGuidance: false,
+    supportsSteps: false,
     supportsAspectRatio: true,
     supportsWidthHeight: true,
     maxOutputMegapixels: 4
@@ -46,13 +54,21 @@ const FLUX_MODEL_PROFILES: Record<FluxModelId, FluxModelProfile> = {
     enabled: false,
     apiMode: "bflProvider",
     modelPath: "flux-2-flex",
-    maxReferenceImages: 10,
+    maxReferenceImages: 8,
     supportsTextOnlyGeneration: true,
     supportsReferenceGuidedComposition: true,
     supportsSingleReferenceEdit: true,
     supportsMultiReferenceEdit: true,
     supportsGuidance: true,
     supportsSteps: true,
+    guidanceRange: {
+      min: 1.5,
+      max: 10
+    },
+    stepsRange: {
+      min: 1,
+      max: 50
+    },
     supportsAspectRatio: true,
     supportsWidthHeight: true,
     maxOutputMegapixels: 4
@@ -61,7 +77,7 @@ const FLUX_MODEL_PROFILES: Record<FluxModelId, FluxModelProfile> = {
     id: "FLUX.1-Kontext-pro",
     enabled: false,
     apiMode: "both",
-    modelPath: "flux-kontext-pro",
+    modelPath: "flux-kontext",
     maxReferenceImages: 1,
     supportsTextOnlyGeneration: true,
     supportsReferenceGuidedComposition: true,

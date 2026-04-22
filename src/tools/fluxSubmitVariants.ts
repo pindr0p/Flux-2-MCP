@@ -1,12 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { getFluxModelProfile } from "../profiles/fluxProfiles.js";
 import type { FluxToolServices } from "../services.js";
 import { FluxMcpError, toToolErrorResult } from "../util/errors.js";
 import {
   createReferenceImageIdsSchema,
+  createGenerationArgumentShape,
   createTextResult,
-  generationArgumentShape,
   resolveToolReferences,
   summarizeJob,
   submitToolJob,
@@ -25,6 +26,8 @@ export function registerFluxSubmitVariantsTool(
   server: McpServer,
   services: FluxToolServices
 ): void {
+  const profile = getFluxModelProfile(services.config.flux.defaultModel);
+
   server.registerTool(
     "flux_submit_variants",
     {
@@ -32,7 +35,7 @@ export function registerFluxSubmitVariantsTool(
       description:
         "Submit multiple FLUX jobs that vary by seed for prompt-only or reference-guided workflows.",
       inputSchema: {
-        ...generationArgumentShape,
+        ...createGenerationArgumentShape(services),
         count: z
           .number()
           .int()
@@ -43,14 +46,24 @@ export function registerFluxSubmitVariantsTool(
           .int()
           .optional()
           .describe("Optional base seed incremented across submitted variants."),
-        image_id: z
-          .string()
-          .optional()
-          .describe("Optional stored image ID to refine across variants."),
-        image_ids: createReferenceImageIdsSchema(services, {
-          min: 2,
-          description: "Optional stored image IDs used as references across variants."
-        }).optional()
+        ...(profile.supportsSingleReferenceEdit
+          ? {
+              image_id: z
+                .string()
+                .optional()
+                .describe("Optional stored image ID to refine across variants.")
+            }
+          : {}),
+        ...(profile.maxReferenceImages > 1 &&
+        (profile.supportsMultiReferenceEdit ||
+          profile.supportsReferenceGuidedComposition)
+          ? {
+              image_ids: createReferenceImageIdsSchema(services, {
+                min: 2,
+                description: "Optional stored image IDs used as references across variants."
+              }).optional()
+            }
+          : {})
       }
     },
     async (args: VariantArgs, extra) => {
@@ -104,6 +117,8 @@ async function resolveVariantReferences(
   services: FluxToolServices,
   args: VariantArgs
 ): Promise<ResolvedToolReferences> {
+  const profile = getFluxModelProfile(services.config.flux.defaultModel);
+
   if (args.image_id && args.image_ids?.length) {
     throw new FluxMcpError(
       "INVALID_ARGUMENT",
@@ -112,10 +127,28 @@ async function resolveVariantReferences(
   }
 
   if (args.image_id) {
+    if (!profile.supportsSingleReferenceEdit) {
+      throw new FluxMcpError(
+        "MODEL_CAPABILITY_UNSUPPORTED",
+        `${profile.id} does not support single-reference variants.`
+      );
+    }
+
     return resolveToolReferences(services, [args.image_id]);
   }
 
   if (args.image_ids?.length) {
+    if (
+      profile.maxReferenceImages < 2 ||
+      (!profile.supportsMultiReferenceEdit &&
+        !profile.supportsReferenceGuidedComposition)
+    ) {
+      throw new FluxMcpError(
+        "MODEL_CAPABILITY_UNSUPPORTED",
+        `${profile.id} does not support multi-reference variants.`
+      );
+    }
+
     return resolveToolReferences(services, args.image_ids);
   }
 
