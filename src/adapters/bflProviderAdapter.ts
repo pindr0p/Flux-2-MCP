@@ -14,9 +14,11 @@ import type {
 } from "../types.js";
 import { FluxMcpError } from "../util/errors.js";
 import type { FluxLogger } from "../util/logging.js";
+import { ConcurrencyLimiter } from "../util/concurrencyLimiter.js";
 
 export class BflProviderAdapter implements FluxProviderAdapter {
   readonly provider;
+  private readonly requestLimiter: ConcurrencyLimiter;
 
   constructor(
     private readonly config: FluxServerConfig,
@@ -26,6 +28,9 @@ export class BflProviderAdapter implements FluxProviderAdapter {
       kind: config.provider.kind,
       releaseChannel: config.provider.releaseChannel
     };
+    this.requestLimiter = new ConcurrencyLimiter(
+      config.flux.maxParallelRequests
+    );
   }
 
   async submitCompose(
@@ -161,47 +166,60 @@ export class BflProviderAdapter implements FluxProviderAdapter {
     url: string,
     init: RequestInit
   ): Promise<{ status: number; body: unknown }> {
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), this.config.flux.requestTimeoutMs);
-
-    try {
-      this.logger.debug(
-        { method: init.method, provider: this.provider.kind, url },
-        "Submitting upstream request."
+    return this.requestLimiter.run(async () => {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(
+        () => controller.abort(),
+        this.config.flux.requestTimeoutMs
       );
 
-      const response = await fetch(url, {
-        ...init,
-        signal: controller.signal
-      });
-      const text = await response.text();
-      const body = parseMaybeJson(text);
+      try {
+        this.logger.debug(
+          {
+            method: init.method,
+            provider: this.provider.kind,
+            url,
+            maxParallelRequests: this.config.flux.maxParallelRequests
+          },
+          "Submitting upstream request."
+        );
 
-      if (!response.ok) {
-        const code = response.status === 429 ? "UPSTREAM_RATE_LIMITED" : "UPSTREAM_BAD_RESPONSE";
-        throw new FluxMcpError(
-          code,
-          `Upstream request failed with HTTP ${response.status}.`,
+        const response = await fetch(url, {
+          ...init,
+          signal: controller.signal
+        });
+        const text = await response.text();
+        const body = parseMaybeJson(text);
+
+        if (!response.ok) {
+          const code =
+            response.status === 429
+              ? "UPSTREAM_RATE_LIMITED"
+              : "UPSTREAM_BAD_RESPONSE";
+          throw new FluxMcpError(
+            code,
+            `Upstream request failed with HTTP ${response.status}.`,
+            body
+          );
+        }
+
+        return {
+          status: response.status,
           body
-        );
-      }
+        };
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new FluxMcpError(
+            "UPSTREAM_TIMEOUT",
+            `Upstream request timed out after ${this.config.flux.requestTimeoutMs}ms.`
+          );
+        }
 
-      return {
-        status: response.status,
-        body
-      };
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new FluxMcpError(
-          "UPSTREAM_TIMEOUT",
-          `Upstream request timed out after ${this.config.flux.requestTimeoutMs}ms.`
-        );
+        throw error;
+      } finally {
+        clearTimeout(timeoutHandle);
       }
-
-      throw error;
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
+    });
   }
 
   private extractReadyResult(body: Record<string, unknown>): UpstreamReadyResult | undefined {

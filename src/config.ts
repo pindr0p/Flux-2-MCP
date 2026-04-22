@@ -26,6 +26,18 @@ const EnvSchema = z.object({
   FLUX_HTTP_HOST: z.string().default("127.0.0.1"),
   FLUX_HTTP_PORT: z.coerce.number().int().positive().default(3000),
   FLUX_HTTP_MCP_PATH: z.string().default("/mcp"),
+  FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS: z
+    .coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60 * 1000),
+  FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS: z
+    .coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 1000),
   FLUX_REDIS_URL: z
     .string()
     .trim()
@@ -87,6 +99,8 @@ export interface FluxServerConfig {
     host: string;
     port: number;
     mcpPath: string;
+    sessionIdleTimeoutMs: number;
+    sessionSweepIntervalMs: number;
     resumableStreams?: {
       redisUrl: string;
       retryIntervalMs: number;
@@ -152,6 +166,8 @@ export function loadConfig(
       host: parsed.FLUX_HTTP_HOST,
       port: parsed.FLUX_HTTP_PORT,
       mcpPath: normalizeMcpPath(parsed.FLUX_HTTP_MCP_PATH),
+      sessionIdleTimeoutMs: parsed.FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS,
+      sessionSweepIntervalMs: parsed.FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS,
       resumableStreams
     },
     provider: {

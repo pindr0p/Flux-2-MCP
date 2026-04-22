@@ -77,4 +77,16 @@ describe("provider configuration", () => {
       keyPrefix: "custom:flux:mcp"
     });
   });
+
+  it("parses HTTP session cleanup settings", () => {
+    const config = loadConfig({
+      AZURE_ENDPOINT: "https://example-resource.api.cognitive.microsoft.com",
+      AZURE_API_KEY: "azure-key",
+      FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS: "120000",
+      FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS: "15000"
+    });
+
+    expect(config.http.sessionIdleTimeoutMs).toBe(120000);
+    expect(config.http.sessionSweepIntervalMs).toBe(15000);
+  });
 });

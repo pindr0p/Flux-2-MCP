@@ -43,6 +43,11 @@ Optional Streamable HTTP resumability variables:
 - `FLUX_REDIS_URL` enables replayable SSE events with Redis Streams. If unset, the server still starts and serves non-resumable Streamable HTTP sessions.
 - `FLUX_HTTP_SSE_RETRY_INTERVAL_MS` controls the SSE retry hint sent to reconnecting clients.
 - `FLUX_HTTP_EVENT_TTL_SECONDS`, `FLUX_HTTP_EVENT_MAX_STREAM_LENGTH`, and `FLUX_HTTP_EVENT_KEY_PREFIX` bound Redis event retention.
+- `FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS` and `FLUX_HTTP_SESSION_SWEEP_INTERVAL_MS` control idle MCP HTTP session cleanup.
+
+Runtime concurrency variable:
+
+- `FLUX_MAX_PARALLEL_REQUESTS` now caps concurrent upstream provider API requests across submit and polling flows.
 
 Azure aliases are also supported:
 
@@ -94,6 +99,7 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
 - Streamable HTTP now attaches background job tracking for submitted HTTP sessions and emits session-scoped completion messages when jobs reach a terminal state.
 - When `FLUX_REDIS_URL` is configured and reachable, Streamable HTTP stores SSE events in Redis Streams and replays missed notifications after reconnects via `Last-Event-ID`.
+- Idle Streamable HTTP sessions are swept and closed after `FLUX_HTTP_SESSION_IDLE_TIMEOUT_MS` without activity.
 - Polling with `flux_get_job_status` and `flux_get_job_result` remains the authoritative fallback for stdio clients, reconnects, and any client that does not surface streamed notifications well.
 - The v1 upstream path is BFL-compatible. It can target Azure's BFL-backed route or the direct BFL API without changing tool schemas.
 - Submit tools return job handles. Use `flux_get_job_status` and `flux_get_job_result` to complete the flow.

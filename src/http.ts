@@ -13,6 +13,7 @@ import {
   createRedisResumableStreamSupport,
   type ResumableStreamSupport
 } from "./http/redisEventStore.js";
+import { SessionRegistry } from "./http/sessionRegistry.js";
 import type { FluxJobNotificationPublisher } from "./monitor/jobMonitor.js";
 import { createFluxToolServices } from "./services.js";
 import { createConfiguredServer } from "./server.js";
@@ -23,7 +24,7 @@ interface HttpSession {
   transport: StreamableHTTPServerTransport;
 }
 
-const sessions = new Map<string, HttpSession>();
+const sessions = new SessionRegistry<HttpSession>();
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
   const services = await createFluxToolServices(config, logger, {
     jobNotifications: createHttpJobNotificationPublisher(logger)
   });
+  const sessionReaper = startSessionReaper(config, logger, services);
 
   const httpServer = createServer((req, res) => {
     void handleHttpRequest(req, res, {
@@ -64,8 +66,9 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: NodeJS.Signals) => {
     httpServer.close();
+    clearInterval(sessionReaper);
     await Promise.all(
-      Array.from(sessions.entries()).map(([sessionId, session]) =>
+      sessions.entries().map(([sessionId, session]) =>
         closeSession(sessionId, session, logger, services.jobMonitor)
       )
     );
@@ -111,7 +114,7 @@ async function handleHttpRequest(
     const sessionId = readSessionId(req);
 
     if (sessionId) {
-      const session = sessions.get(sessionId);
+      const session = sessions.touch(sessionId);
       if (!session) {
         writeJsonRpcError(
           res,
@@ -147,7 +150,7 @@ async function handleHttpRequest(
         sessions.set(createdSessionId, initializedSession);
       },
       onsessionclosed: (closedSessionId) => {
-        const existingSession = sessions.get(closedSessionId);
+        const existingSession = sessions.delete(closedSessionId);
         if (!existingSession) {
           return;
         }
@@ -157,7 +160,7 @@ async function handleHttpRequest(
           existingSession,
           logger,
           services.jobMonitor,
-          { closeTransport: false }
+          { closeTransport: false, deleteSession: false }
         );
       },
       eventStore: resumableStreams?.eventStore,
@@ -187,7 +190,7 @@ async function handleHttpRequest(
       return;
     }
 
-    const session = sessions.get(sessionId);
+    const session = sessions.touch(sessionId);
     if (!session) {
       writeJsonRpcError(
         res,
@@ -229,9 +232,12 @@ async function closeSession(
   jobMonitor: Awaited<ReturnType<typeof createFluxToolServices>>["jobMonitor"],
   options: {
     closeTransport?: boolean;
+    deleteSession?: boolean;
   } = {}
 ): Promise<void> {
-  sessions.delete(sessionId);
+  if (options.deleteSession !== false) {
+    sessions.delete(sessionId);
+  }
   jobMonitor.dropSession(sessionId);
 
   const closeOperations: Array<Promise<unknown>> = [session.server.close()];
@@ -248,7 +254,7 @@ function createHttpJobNotificationPublisher(
 ): FluxJobNotificationPublisher {
   return {
     async publishJobUpdate({ job, sessionId }) {
-      const session = sessions.get(sessionId);
+      const session = sessions.touch(sessionId);
       if (!session) {
         return;
       }
@@ -269,6 +275,32 @@ function createHttpJobNotificationPublisher(
       }
     }
   };
+}
+
+function startSessionReaper(
+  config: ReturnType<typeof loadConfig>,
+  logger: ReturnType<typeof createLogger>,
+  services: Awaited<ReturnType<typeof createFluxToolServices>>
+): ReturnType<typeof setInterval> {
+  const timer = setInterval(() => {
+    const expiredSessions = sessions.reapIdle(config.http.sessionIdleTimeoutMs);
+    for (const [sessionId, session] of expiredSessions) {
+      logger.info(
+        {
+          sessionId,
+          idleTimeoutMs: config.http.sessionIdleTimeoutMs
+        },
+        "Closing idle MCP HTTP session."
+      );
+
+      void closeSession(sessionId, session, logger, services.jobMonitor, {
+        deleteSession: false
+      });
+    }
+  }, config.http.sessionSweepIntervalMs);
+
+  timer.unref();
+  return timer;
 }
 
 function readSessionId(req: IncomingMessage): string | undefined {
