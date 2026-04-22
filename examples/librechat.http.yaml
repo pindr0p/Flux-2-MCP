@@ -7,7 +7,7 @@ mcpSettings:
 mcpServers:
   fluxHttpLocal:
     type: streamable-http
-    url: http://localhost:3001/mcp
+    url: http://localhost:3000/mcp
     timeout: 300000
     initTimeout: 30000
     chatMenu: true
