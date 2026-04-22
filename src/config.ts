@@ -26,6 +26,25 @@ const EnvSchema = z.object({
   FLUX_HTTP_HOST: z.string().default("127.0.0.1"),
   FLUX_HTTP_PORT: z.coerce.number().int().positive().default(3000),
   FLUX_HTTP_MCP_PATH: z.string().default("/mcp"),
+  FLUX_REDIS_URL: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
+  FLUX_HTTP_SSE_RETRY_INTERVAL_MS: z
+    .coerce
+    .number()
+    .int()
+    .positive()
+    .default(1000),
+  FLUX_HTTP_EVENT_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  FLUX_HTTP_EVENT_MAX_STREAM_LENGTH: z
+    .coerce
+    .number()
+    .int()
+    .positive()
+    .default(1000),
+  FLUX_HTTP_EVENT_KEY_PREFIX: z.string().default("flux:mcp:sse"),
   FLUX_PROVIDER_KIND: z.enum(["azure-bfl", "direct-bfl"]).optional(),
   FLUX_PROVIDER_BASE_URL: z.string().optional(),
   BFL_API_BASE_URL: z.string().optional(),
@@ -68,6 +87,13 @@ export interface FluxServerConfig {
     host: string;
     port: number;
     mcpPath: string;
+    resumableStreams?: {
+      redisUrl: string;
+      retryIntervalMs: number;
+      eventTtlSeconds: number;
+      maxEventsPerStream: number;
+      keyPrefix: string;
+    };
   };
   provider: {
     kind: FluxProviderKind;
@@ -96,6 +122,15 @@ export function loadConfig(
   env: NodeJS.ProcessEnv = process.env
 ): FluxServerConfig {
   const parsed = EnvSchema.parse(env);
+  const resumableStreams = parsed.FLUX_REDIS_URL
+    ? {
+        redisUrl: parsed.FLUX_REDIS_URL,
+        retryIntervalMs: parsed.FLUX_HTTP_SSE_RETRY_INTERVAL_MS,
+        eventTtlSeconds: parsed.FLUX_HTTP_EVENT_TTL_SECONDS,
+        maxEventsPerStream: parsed.FLUX_HTTP_EVENT_MAX_STREAM_LENGTH,
+        keyPrefix: parsed.FLUX_HTTP_EVENT_KEY_PREFIX
+      }
+    : undefined;
   const providerKind = inferProviderKind(parsed);
   const providerBaseUrl =
     parsed.FLUX_PROVIDER_BASE_URL ??
@@ -116,7 +151,8 @@ export function loadConfig(
     http: {
       host: parsed.FLUX_HTTP_HOST,
       port: parsed.FLUX_HTTP_PORT,
-      mcpPath: normalizeMcpPath(parsed.FLUX_HTTP_MCP_PATH)
+      mcpPath: normalizeMcpPath(parsed.FLUX_HTTP_MCP_PATH),
+      resumableStreams
     },
     provider: {
       kind: providerKind,

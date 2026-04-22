@@ -9,6 +9,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { loadConfig } from "./config.js";
+import {
+  createRedisResumableStreamSupport,
+  type ResumableStreamSupport
+} from "./http/redisEventStore.js";
 import type { FluxJobNotificationPublisher } from "./monitor/jobMonitor.js";
 import { createFluxToolServices } from "./services.js";
 import { createConfiguredServer } from "./server.js";
@@ -24,12 +28,21 @@ const sessions = new Map<string, HttpSession>();
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger();
+  const resumableStreams = await createRedisResumableStreamSupport(
+    config.http.resumableStreams,
+    logger
+  );
   const services = await createFluxToolServices(config, logger, {
     jobNotifications: createHttpJobNotificationPublisher(logger)
   });
 
   const httpServer = createServer((req, res) => {
-    void handleHttpRequest(req, res, { config, logger, services }).catch(
+    void handleHttpRequest(req, res, {
+      config,
+      logger,
+      services,
+      resumableStreams
+    }).catch(
       (error) => {
         logger.error({ error }, "Failed to handle MCP HTTP request.");
         writeJsonRpcError(res, 500, -32603, "Internal server error");
@@ -56,6 +69,7 @@ async function main(): Promise<void> {
         closeSession(sessionId, session, logger, services.jobMonitor)
       )
     );
+    await resumableStreams?.close();
     await services.jobMonitor.close();
     process.exit(signal === "SIGINT" ? 130 : 143);
   };
@@ -75,9 +89,10 @@ async function handleHttpRequest(
     config: ReturnType<typeof loadConfig>;
     logger: ReturnType<typeof createLogger>;
     services: Awaited<ReturnType<typeof createFluxToolServices>>;
+    resumableStreams?: ResumableStreamSupport;
   }
 ): Promise<void> {
-  const { config, logger, services } = context;
+  const { config, logger, services, resumableStreams } = context;
   const requestPath = new URL(req.url ?? "/", "http://localhost").pathname;
 
   if (requestPath === "/healthz") {
@@ -130,27 +145,26 @@ async function handleHttpRequest(
         }
 
         sessions.set(createdSessionId, initializedSession);
-      }
+      },
+      onsessionclosed: (closedSessionId) => {
+        const existingSession = sessions.get(closedSessionId);
+        if (!existingSession) {
+          return;
+        }
+
+        void closeSession(
+          closedSessionId,
+          existingSession,
+          logger,
+          services.jobMonitor,
+          { closeTransport: false }
+        );
+      },
+      eventStore: resumableStreams?.eventStore,
+      retryInterval: resumableStreams?.retryIntervalMs
     });
     const server = createConfiguredServer(config, services);
     initializedSession = { server, transport };
-
-    transport.onclose = () => {
-      const currentSessionId = transport.sessionId;
-      if (!currentSessionId) {
-        return;
-      }
-
-      const existingSession = sessions.get(currentSessionId);
-      if (existingSession) {
-        void closeSession(
-          currentSessionId,
-          existingSession,
-          logger,
-          services.jobMonitor
-        );
-      }
-    };
 
     transport.onerror = (error) => {
       logger.error({ error }, "Streamable HTTP transport error.");
@@ -201,8 +215,7 @@ async function handleHttpRequest(
       return;
     }
 
-    await closeSession(sessionId, session, logger, services.jobMonitor);
-    res.writeHead(204).end();
+    await session.transport.handleRequest(req, res);
     return;
   }
 
@@ -213,12 +226,20 @@ async function closeSession(
   sessionId: string,
   session: HttpSession,
   logger: ReturnType<typeof createLogger>,
-  jobMonitor: Awaited<ReturnType<typeof createFluxToolServices>>["jobMonitor"]
+  jobMonitor: Awaited<ReturnType<typeof createFluxToolServices>>["jobMonitor"],
+  options: {
+    closeTransport?: boolean;
+  } = {}
 ): Promise<void> {
   sessions.delete(sessionId);
   jobMonitor.dropSession(sessionId);
 
-  await Promise.allSettled([session.transport.close(), session.server.close()]);
+  const closeOperations: Array<Promise<unknown>> = [session.server.close()];
+  if (options.closeTransport !== false) {
+    closeOperations.push(session.transport.close());
+  }
+
+  await Promise.allSettled(closeOperations);
   logger.debug({ sessionId }, "Closed MCP HTTP session.");
 }
 

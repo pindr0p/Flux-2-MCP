@@ -52,4 +52,29 @@ describe("provider configuration", () => {
       "https://api.bfl.ai/v1/flux-2-pro"
     );
   });
+
+  it("enables resumable stream config only when Redis is configured", () => {
+    const disabledConfig = loadConfig({
+      AZURE_ENDPOINT: "https://example-resource.api.cognitive.microsoft.com",
+      AZURE_API_KEY: "azure-key"
+    });
+    const enabledConfig = loadConfig({
+      AZURE_ENDPOINT: "https://example-resource.api.cognitive.microsoft.com",
+      AZURE_API_KEY: "azure-key",
+      FLUX_REDIS_URL: "redis://redis:6379/0",
+      FLUX_HTTP_SSE_RETRY_INTERVAL_MS: "2500",
+      FLUX_HTTP_EVENT_TTL_SECONDS: "1800",
+      FLUX_HTTP_EVENT_MAX_STREAM_LENGTH: "250",
+      FLUX_HTTP_EVENT_KEY_PREFIX: "custom:flux:mcp"
+    });
+
+    expect(disabledConfig.http.resumableStreams).toBeUndefined();
+    expect(enabledConfig.http.resumableStreams).toEqual({
+      redisUrl: "redis://redis:6379/0",
+      retryIntervalMs: 2500,
+      eventTtlSeconds: 1800,
+      maxEventsPerStream: 250,
+      keyPrefix: "custom:flux:mcp"
+    });
+  });
 });

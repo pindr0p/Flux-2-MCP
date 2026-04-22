@@ -38,6 +38,12 @@ Generic provider variables are preferred:
 - `FLUX_PROVIDER_API_KEY` or `FLUX_PROVIDER_BEARER_TOKEN`
 - `FLUX_PROVIDER_RELEASE_CHANNEL`
 
+Optional Streamable HTTP resumability variables:
+
+- `FLUX_REDIS_URL` enables replayable SSE events with Redis Streams. If unset, the server still starts and serves non-resumable Streamable HTTP sessions.
+- `FLUX_HTTP_SSE_RETRY_INTERVAL_MS` controls the SSE retry hint sent to reconnecting clients.
+- `FLUX_HTTP_EVENT_TTL_SECONDS`, `FLUX_HTTP_EVENT_MAX_STREAM_LENGTH`, and `FLUX_HTTP_EVENT_KEY_PREFIX` bound Redis event retention.
+
 Azure aliases are also supported:
 
 - `AZURE_ENDPOINT`
@@ -68,8 +74,9 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 
 ## Container deployment
 
-- Copy `.env.example` to `.env` at the repo root; `.env` is ignored by git.
+- Create `.env` at the repo root from `.env.example`; `.env` is ignored by git.
 - Edit `.env` with your provider credentials before deploying.
+- Set `FLUX_REDIS_URL` only if you want resumable Streamable HTTP replay through an existing Redis instance.
 - Build and run with `docker compose up --build`.
 - Wait until `docker compose ps` reports the service as `healthy` before testing the MCP endpoint.
 - The HTTP MCP endpoint is exposed at `http://localhost:3001/mcp` by default.
@@ -86,6 +93,7 @@ The probe scripts now print provider kind, release channel, upstream request ID,
 
 - The runtime MCP contract is async: submit a job, poll status, then fetch the rendered result.
 - Streamable HTTP now attaches background job tracking for submitted HTTP sessions and emits session-scoped completion messages when jobs reach a terminal state.
+- When `FLUX_REDIS_URL` is configured and reachable, Streamable HTTP stores SSE events in Redis Streams and replays missed notifications after reconnects via `Last-Event-ID`.
 - Polling with `flux_get_job_status` and `flux_get_job_result` remains the authoritative fallback for stdio clients, reconnects, and any client that does not surface streamed notifications well.
 - The v1 upstream path is BFL-compatible. It can target Azure's BFL-backed route or the direct BFL API without changing tool schemas.
 - Submit tools return job handles. Use `flux_get_job_status` and `flux_get_job_result` to complete the flow.
